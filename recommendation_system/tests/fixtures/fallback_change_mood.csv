@@ -1,0 +1,4 @@
+emotion,category,title,artist,youtube_url
+sadness,classic,Sad Classic,Sad Artist,https://www.youtube.com/watch?v=sadclassic1
+surprise,classic,Fallback Surprise,Surprise Artist,https://www.youtube.com/watch?v=surprise001
+joy,rap,Joy Rap Only,Joy Rap Artist,https://www.youtube.com/watch?v=joyraponly1
