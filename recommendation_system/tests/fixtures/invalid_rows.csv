@@ -1,0 +1,8 @@
+emotion,category,title,artist,youtube_url
+sadness,classic,Valid Song,Valid Artist,https://www.youtube.com/watch?v=valid000001
+,classic,No Emotion,Some Artist,https://www.youtube.com/watch?v=noemotion01
+sadness,,No Category,Some Artist,https://www.youtube.com/watch?v=nocategory1
+sadness,classic,,Some Artist,https://www.youtube.com/watch?v=notitle0001
+sadness,classic,No Artist,,https://www.youtube.com/watch?v=noartist001
+happy,classic,Bad Emotion,Some Artist,https://www.youtube.com/watch?v=bademotion1
+sadness,jazz,Bad Category,Some Artist,https://www.youtube.com/watch?v=badcateg001
