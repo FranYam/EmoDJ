@@ -5,4 +5,7 @@ jupyter>=1.0.0
 nbconvert>=7.16.0
 ipykernel>=6.0.0
 pytest>=8.0.0
+fastapi>=0.115.0
+uvicorn>=0.32.0
+httpx>=0.27.0
 
