@@ -4,9 +4,9 @@ Thin UI for the Python recommendation API. Song selection stays in FastAPI.
 
 ## Screens
 
-1. **Home** — sentence + manual emotion (classifier comes in Phase 7).
-2. **Preferences** — Stay / Change mood, Classic / Rap.
-3. **Results** — title, artist, category, YouTube link. Back keeps the emotion.
+1. **Home** — English sentence only. Analyze calls DistilBERT (`POST /analyze`). There is no manual emotion picker.
+2. **Preferences** — shows the detected emotion and confidence, then Stay / Change mood and Classic / Rap.
+3. **Results** — title, artist, category, YouTube link. Back keeps the detected emotion.
 
 ## Run
 
@@ -19,8 +19,8 @@ py -3 -m uvicorn backend_api.main:app --reload --host 127.0.0.1 --port 8000
 Then, using the Flutter SDK on this machine:
 
 ```text
-C:\Users\yameo\Desktop\Set of my project\Fluuter-src\flutter\bin\flutter.bat pub get
-C:\Users\yameo\Desktop\Set of my project\Fluuter-src\flutter\bin\flutter.bat run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000
+C:\src\flutter\bin\flutter.bat pub get
+C:\src\flutter\bin\flutter.bat run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000
 ```
 
 Windows desktop:

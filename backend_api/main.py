@@ -1,13 +1,14 @@
-"""FastAPI entry point for Flutter (Phase 5).
+"""FastAPI entry point for Flutter.
 
-Why an API exists:
-  Flutter (Dart) cannot import the Python recommender. HTTP is the boundary.
-  All song selection still happens in recommendation_system.src.recommendation.
+Flutter cannot import Python. HTTP is the boundary.
+
+  Flutter  →  POST /analyze  →  DistilBERT  →  emotion
+           →  POST /recommend →  recommendation_system  →  songs
+
+Or one call: POST /analyze-and-recommend.
 
 Run from the EmoDJ repo root:
   py -3 -m uvicorn backend_api.main:app --reload --host 127.0.0.1 --port 8000
-
-Android emulator later uses http://10.0.2.2:8000 instead of localhost.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ for _path in (_REPO_ROOT, _REC_SYS):
     if _path_str not in sys.path:
         sys.path.insert(0, _path_str)
 
+from emotion_classifier.classifier import ClassifierError, classifier_status, predict
 from src.config import CATEGORIES, DEFAULT_LIMIT, EMOTIONS, MAX_LIMIT, MIN_LIMIT, MODES
 from src.data_loader import load_songs
 from src.recommendation import RecommendationError, recommend_songs
@@ -34,13 +36,12 @@ from src.recommendation import RecommendationError, recommend_songs
 app = FastAPI(
     title="EmoDJ Recommendation API",
     description=(
-        "Rule-based song recommendations from a labeled CSV. "
-        "Does not run the teammate emotion classifier (Phase 7)."
+        "Classifies English text with the teammate DistilBERT model, "
+        "then recommends songs from a labeled CSV."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
-# Flutter web / desktop will call this API from another origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -51,7 +52,7 @@ app.add_middleware(
 
 
 class RecommendRequest(BaseModel):
-    """Body for POST /recommend. Strings are validated by the Python module."""
+    """Body for POST /recommend after an emotion is already known."""
 
     emotion: str = Field(..., examples=["sadness"])
     mode: str = Field(..., examples=["stay_mood"])
@@ -75,28 +76,32 @@ class RecommendResponse(BaseModel):
     recommendations: list[SongRecord]
 
 
-class AnalyzeRecommendRequest(BaseModel):
-    """Prototype stand-in until the classifier exists.
+class AnalyzeRequest(BaseModel):
+    text: str = Field(..., examples=["I feel overwhelmed and sad because of my exams."])
 
-    `text` is accepted so Flutter can send the sentence now. The mock
-    ignores NLP and uses `emotion` (manual selection) with confidence 1.0.
-    """
+
+class AnalyzeResponse(BaseModel):
+    input_text: str
+    emotion: str
+    confidence: float
+    status: str
+    classifier: str
+
+
+class AnalyzeRecommendRequest(BaseModel):
+    """Full pipeline: sentence in, songs out. Emotion is never sent by the client."""
 
     text: str = Field(..., examples=["I feel overwhelmed and sad because of my exams."])
     mode: str
     category: str
     limit: int | None = None
-    emotion: str | None = Field(
-        default=None,
-        description="Required for the mock classifier. Later filled by the NLP model.",
-        examples=["sadness"],
-    )
 
 
 class AnalyzeRecommendResponse(RecommendResponse):
     input_text: str
     confidence: float
     classifier: str
+    status: str
 
 
 def _recommend_or_http_error(
@@ -113,9 +118,16 @@ def _recommend_or_http_error(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+def _predict_or_http_error(text: str) -> dict[str, Any]:
+    try:
+        return predict(text)
+    except ClassifierError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
-    """Liveness check plus a cheap catalog load so a missing CSV is visible."""
+    """Liveness check plus catalog and classifier file status."""
     catalog = load_songs()
     return {
         "status": "ok",
@@ -125,34 +137,33 @@ def health() -> dict[str, Any]:
         "modes": list(MODES),
         "default_limit": DEFAULT_LIMIT,
         "limit_range": [MIN_LIMIT, MAX_LIMIT],
+        "classifier": classifier_status(),
     }
+
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+def analyze(body: AnalyzeRequest) -> dict[str, Any]:
+    """Classify text only. Flutter uses this on the Home Analyze button."""
+    return _predict_or_http_error(body.text)
 
 
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(body: RecommendRequest) -> dict[str, Any]:
-    """Recommend songs from a known emotion. This is the stable Flutter contract."""
+    """Recommend songs from a known emotion (after /analyze, or for tests)."""
     return _recommend_or_http_error(body.emotion, body.mode, body.category, body.limit)
 
 
 @app.post("/analyze-and-recommend", response_model=AnalyzeRecommendResponse)
 def analyze_and_recommend(body: AnalyzeRecommendRequest) -> dict[str, Any]:
-    """Mock pipeline: sentence is stored, emotion must be supplied manually.
-
-    Phase 7 will replace the mock with teammate.predict(text) and keep
-    the recommend_songs call unchanged.
-    """
-    if body.emotion is None or not str(body.emotion).strip():
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Mock classifier requires 'emotion' until the NLP model is integrated. "
-                "Send the same six labels as /recommend."
-            ),
-        )
-    payload = _recommend_or_http_error(body.emotion, body.mode, body.category, body.limit)
-    payload["input_text"] = body.text
-    payload["confidence"] = 1.0
-    payload["classifier"] = "mock"
+    """Classify the sentence, then recommend. Same recommend_songs() as /recommend."""
+    prediction = _predict_or_http_error(body.text)
+    payload = _recommend_or_http_error(
+        prediction["emotion"], body.mode, body.category, body.limit
+    )
+    payload["input_text"] = prediction["input_text"]
+    payload["confidence"] = prediction["confidence"]
+    payload["classifier"] = prediction["classifier"]
+    payload["status"] = prediction["status"]
     return payload
 
 

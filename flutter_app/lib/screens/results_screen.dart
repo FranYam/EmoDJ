@@ -41,6 +41,12 @@ class ResultsScreen extends StatelessWidget {
                       'targets: ${result.targetEmotions.join(', ')}',
                     ),
                   ),
+                  if (session.confidence != null)
+                    Chip(
+                      label: Text(
+                        '${(session.confidence! * 100).toStringAsFixed(0)}% confidence',
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),

@@ -68,13 +68,31 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
                 style: Theme.of(context).textTheme.labelLarge,
               ),
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Chip(
-                  label: Text(widget.session.emotion),
-                  avatar: const Icon(Icons.mood),
-                ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(
+                    label: Text(widget.session.emotion),
+                    avatar: const Icon(Icons.mood),
+                  ),
+                  if (widget.session.confidence != null)
+                    Chip(
+                      label: Text(
+                        '${(widget.session.confidence! * 100).toStringAsFixed(0)}% confidence',
+                      ),
+                    ),
+                ],
               ),
+              if (widget.session.isLowConfidence) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'The classifier is unsure about this sentence. '
+                  'You can still get suggestions, but they may not match '
+                  'how you feel.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
               if (widget.session.text.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(

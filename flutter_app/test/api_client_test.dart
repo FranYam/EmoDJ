@@ -8,6 +8,36 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  test('analyze parses DistilBERT JSON and never sends emotion', () async {
+    final client = ApiClient(
+      baseUrl: 'http://127.0.0.1:8000',
+      httpClient: MockClient((request) async {
+        expect(request.url.path, '/analyze');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['text'], 'I feel overwhelmed and sad because of my exams.');
+        expect(body.containsKey('emotion'), isFalse);
+        return http.Response(
+          jsonEncode({
+            'input_text': body['text'],
+            'emotion': 'sadness',
+            'confidence': 0.91,
+            'status': 'accepted',
+            'classifier': 'distilbert',
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    final result = await client.analyze(
+      'I feel overwhelmed and sad because of my exams.',
+    );
+    expect(result.emotion, 'sadness');
+    expect(result.confidence, 0.91);
+    expect(result.classifier, 'distilbert');
+  });
+
   test('recommend parses FastAPI JSON', () async {
     final client = ApiClient(
       baseUrl: 'http://127.0.0.1:8000',

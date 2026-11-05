@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config.dart';
+import '../models/analyze_response.dart';
 import '../models/recommend_response.dart';
 import 'api_exception.dart';
 
@@ -32,6 +33,30 @@ class ApiClient {
       throw ApiException(
         'Cannot reach the recommendation API at $_baseUrl. '
         'Start FastAPI from the EmoDJ folder, then retry.',
+      );
+    }
+  }
+
+  Future<AnalyzeResponse> analyze(String text) async {
+    try {
+      final response = await _http
+          .post(
+            _uri('/analyze'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'text': text}),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      final decoded = jsonDecode(response.body);
+      if (response.statusCode != 200) {
+        throw ApiException(_detailFrom(decoded, response.statusCode));
+      }
+      return AnalyzeResponse.fromJson(decoded as Map<String, dynamic>);
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw ApiException(
+        'Cannot reach the recommendation API at $_baseUrl.',
       );
     }
   }

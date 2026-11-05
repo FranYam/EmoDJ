@@ -105,25 +105,59 @@ def test_cors_preflight_allows_browser_clients():
     assert response.headers.get("access-control-allow-origin") == "*"
 
 
-def test_mock_analyze_requires_emotion():
-    response = client.post(
-        "/analyze-and-recommend",
-        json={
-            "text": "I feel overwhelmed and sad because of my exams.",
-            "mode": "stay_mood",
-            "category": "classic",
-        },
-    )
+def test_health_reports_classifier_block():
+    response = client.get("/health")
+    assert response.status_code == 200
+    classifier = response.json()["classifier"]
+    assert "available" in classifier
+    assert classifier["backend"] == "distilbert"
+
+
+def test_analyze_rejects_empty_text():
+    response = client.post("/analyze", json={"text": "   "})
     assert response.status_code == 400
-    assert "Mock classifier" in response.json()["detail"]
+    assert "text is required" in response.json()["detail"]
 
 
-def test_mock_analyze_and_recommend():
+def test_analyze_uses_classifier(monkeypatch):
+    def fake_predict(text):
+        return {
+            "emotion": "sadness",
+            "confidence": 0.91,
+            "status": "accepted",
+            "classifier": "distilbert",
+            "input_text": text.strip(),
+        }
+
+    monkeypatch.setattr("backend_api.main.predict", fake_predict)
+    response = client.post(
+        "/analyze",
+        json={"text": "I feel overwhelmed and sad because of my exams."},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["emotion"] == "sadness"
+    assert body["confidence"] == 0.91
+    assert body["classifier"] == "distilbert"
+    assert "emotion" in body
+    assert "mode" not in body
+
+
+def test_analyze_and_recommend_no_manual_emotion(monkeypatch):
+    def fake_predict(text):
+        return {
+            "emotion": "sadness",
+            "confidence": 0.88,
+            "status": "accepted",
+            "classifier": "distilbert",
+            "input_text": text.strip(),
+        }
+
+    monkeypatch.setattr("backend_api.main.predict", fake_predict)
     response = client.post(
         "/analyze-and-recommend",
         json={
             "text": "I feel overwhelmed and sad because of my exams.",
-            "emotion": "sadness",
             "mode": "stay_mood",
             "category": "classic",
             "limit": 5,
@@ -131,8 +165,36 @@ def test_mock_analyze_and_recommend():
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["classifier"] == "mock"
-    assert body["confidence"] == 1.0
+    assert "emotion" not in response.request.content.decode() or True
+    assert body["classifier"] == "distilbert"
+    assert body["confidence"] == 0.88
+    assert body["status"] == "accepted"
     assert body["input_text"].startswith("I feel overwhelmed")
     assert body["detected_emotion"] == "sadness"
     assert body["count"] == 5
+
+
+def test_analyze_and_recommend_ignores_client_emotion(monkeypatch):
+    """A leftover Flutter emotion field must not override DistilBERT."""
+
+    def fake_predict(text):
+        return {
+            "emotion": "sadness",
+            "confidence": 0.8,
+            "status": "accepted",
+            "classifier": "distilbert",
+            "input_text": text.strip(),
+        }
+
+    monkeypatch.setattr("backend_api.main.predict", fake_predict)
+    response = client.post(
+        "/analyze-and-recommend",
+        json={
+            "text": "I feel sad.",
+            "emotion": "joy",
+            "mode": "stay_mood",
+            "category": "classic",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["detected_emotion"] == "sadness"

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../config.dart';
 import '../models/session.dart';
 import '../services/api_client.dart';
 import '../services/api_exception.dart';
@@ -17,14 +16,21 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _textController = TextEditingController();
-  String? _emotion;
   String? _healthMessage;
   bool _apiOk = false;
   bool _checkingHealth = true;
+  bool _analyzing = false;
+  bool _hasText = false;
 
   @override
   void initState() {
     super.initState();
+    _textController.addListener(() {
+      final hasText = _textController.text.trim().isNotEmpty;
+      if (hasText != _hasText) {
+        setState(() => _hasText = hasText);
+      }
+    });
     _refreshHealth();
   }
 
@@ -41,10 +47,17 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final body = await widget.api.health();
       if (!mounted) return;
+      final classifier = body['classifier'];
+      var extra = '';
+      if (classifier is Map && classifier['available'] == true) {
+        extra = ' · DistilBERT ready';
+      } else if (classifier is Map && classifier['available'] == false) {
+        extra = ' · emotion model missing';
+      }
       setState(() {
         _apiOk = true;
         _healthMessage =
-            'API connected · ${body['song_count']} songs in catalog';
+            'API connected · ${body['song_count']} songs in catalog$extra';
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -61,26 +74,43 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _goToPreferences() {
-    if (_emotion == null) {
+  Future<void> _analyze() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty || _analyzing) {
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PreferencesScreen(
-          api: widget.api,
-          session: RecommendationSession(
-            text: _textController.text.trim(),
-            emotion: _emotion!,
+    setState(() => _analyzing = true);
+    try {
+      final prediction = await widget.api.analyze(text);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PreferencesScreen(
+            api: widget.api,
+            session: RecommendationSession(
+              text: prediction.inputText,
+              emotion: prediction.emotion,
+              confidence: prediction.confidence,
+              classifierStatus: prediction.status,
+              classifier: prediction.classifier,
+            ),
           ),
         ),
-      ),
-    );
+      );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
+    } finally {
+      if (mounted) setState(() => _analyzing = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final canAnalyze = _hasText && !_analyzing;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -111,9 +141,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Write how you feel in English, then pick an emotion. '
-                  'The app recommends songs that stay with that mood or '
-                  'offer a different atmosphere.',
+                  'Write how you feel in English. DistilBERT detects the '
+                  'emotion, then you choose whether to stay in that mood or '
+                  'explore a different atmosphere.',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 24),
@@ -121,6 +151,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: _textController,
                   minLines: 3,
                   maxLines: 6,
+                  enabled: !_analyzing,
                   decoration: const InputDecoration(
                     labelText: 'How do you feel?',
                     hintText:
@@ -128,34 +159,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     alignLabelWithHint: true,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Text(
-                  'Emotion (manual, for testing)',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Required until the teammate NLP model is connected. '
-                  'The sentence is stored but not classified yet.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final emotion in AppConfig.emotions)
-                      ChoiceChip(
-                        label: Text(emotion),
-                        selected: _emotion == emotion,
-                        onSelected: (_) => setState(() => _emotion = emotion),
-                      ),
-                  ],
-                ),
                 const SizedBox(height: 24),
                 FilledButton(
-                  onPressed: _emotion == null ? null : _goToPreferences,
-                  child: const Text('Analyze'),
+                  onPressed: canAnalyze ? _analyze : null,
+                  child: _analyzing
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Analyze'),
                 ),
                 const SizedBox(height: 16),
                 if (_checkingHealth)

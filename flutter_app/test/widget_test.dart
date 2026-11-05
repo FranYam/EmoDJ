@@ -12,7 +12,26 @@ ApiClient _mockApi() {
     httpClient: MockClient((request) async {
       if (request.url.path == '/health') {
         return http.Response(
-          jsonEncode({'status': 'ok', 'song_count': 60}),
+          jsonEncode({
+            'status': 'ok',
+            'song_count': 60,
+            'classifier': {'available': true, 'backend': 'distilbert'},
+          }),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      if (request.url.path == '/analyze') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body.containsKey('emotion'), isFalse);
+        return http.Response(
+          jsonEncode({
+            'input_text': body['text'],
+            'emotion': 'sadness',
+            'confidence': 0.91,
+            'status': 'accepted',
+            'classifier': 'distilbert',
+          }),
           200,
           headers: {'content-type': 'application/json'},
         );
@@ -56,9 +75,10 @@ void main() {
     expect(find.text('EmoDJ'), findsOneWidget);
     expect(find.text('Analyze'), findsOneWidget);
     expect(find.textContaining('API connected'), findsOneWidget);
+    expect(find.text('sadness'), findsNothing);
   });
 
-  testWidgets('Analyze stays disabled until an emotion is selected',
+  testWidgets('Analyze stays disabled until the user types a sentence',
       (tester) async {
     await _pumpApp(tester);
 
@@ -67,7 +87,10 @@ void main() {
       isNull,
     );
 
-    await tester.tap(find.text('sadness'));
+    await tester.enterText(
+      find.byType(TextField),
+      'I feel overwhelmed and sad because of my exams.',
+    );
     await tester.pump();
 
     expect(
@@ -76,19 +99,21 @@ void main() {
     );
   });
 
-  testWidgets('full flow: home → preferences → results → back', (tester) async {
+  testWidgets('full flow: home → analyze → preferences → results → back',
+      (tester) async {
     await _pumpApp(tester);
 
     await tester.enterText(
       find.byType(TextField),
       'I feel overwhelmed and sad because of my exams.',
     );
-    await tester.tap(find.text('sadness'));
     await tester.pump();
     await tester.tap(find.text('Analyze'));
     await tester.pumpAndSettle();
 
     expect(find.text('Recommendation preferences'), findsOneWidget);
+    expect(find.text('sadness'), findsOneWidget);
+    expect(find.text('91% confidence'), findsOneWidget);
     expect(find.text('Stay in my mood'), findsOneWidget);
     expect(find.text('Classic'), findsOneWidget);
 
